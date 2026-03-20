@@ -4,32 +4,30 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
-} from 'typeorm'
-import { Category } from '../../categories/entities/category.entity'
+} from 'typeorm';
+import { Category } from '../../categories/entities/category.entity';
+import { Media } from '../../media/entities/media.entity';
 
 @Entity({ name: 'nominees' })
 export class Nominee {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @ManyToOne(() => Category, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'categoryId' })
-  category!: Category
+  category!: Category;
 
   @Column({ type: 'uuid' })
-  categoryId!: string
+  categoryId!: string;
 
   @Column({ type: 'varchar', length: 255 })
-  name!: string
+  name!: string;
 
   @Column({ type: 'text', nullable: true })
-  description?: string
+  description?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  imageUrl?: string
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata?: Record<string, any>
-
+  @OneToMany(() => Media, (media) => media.nominee)
+  media?: Media[];
 }

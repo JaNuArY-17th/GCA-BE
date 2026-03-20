@@ -1,10 +1,10 @@
-import 'dotenv/config'
-import { DataSource, DataSourceOptions } from 'typeorm'
-import { Vote } from '../modules/votes/entities/vote.entity'
-import { Voter } from '../modules/users/entities/user.entity'
-import { Category } from '../modules/categories/entities/category.entity'
-import { Nominee } from '../modules/nominees/entities/nominee.entity'
-import { Media } from '../modules/media/entities/media.entity'
+import 'dotenv/config';
+import { DataSource, DataSourceOptions } from 'typeorm';
+import { Vote } from '../modules/votes/entities/vote.entity';
+import { Voter } from '../modules/users/entities/user.entity';
+import { Category } from '../modules/categories/entities/category.entity';
+import { Nominee } from '../modules/nominees/entities/nominee.entity';
+import { Media } from '../modules/media/entities/media.entity';
 
 const baseOptions: DataSourceOptions = {
   type: 'postgres',
@@ -19,7 +19,7 @@ const baseOptions: DataSourceOptions = {
   ssl: {
     rejectUnauthorized: false,
   },
-}
+};
 
-export const AppDataSource = new DataSource(baseOptions)
-export default baseOptions
+export const AppDataSource = new DataSource(baseOptions);
+export default baseOptions;

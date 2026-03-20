@@ -1,17 +1,20 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity({ name: 'voters' })
 export class Voter {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column({ type: 'varchar', length: 255 })
-  fullname!: string
+  fullname!: string;
 
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 50 })
-  mssv!: string
+  mssv!: string;
 
   @Column({ type: 'varchar', length: 255 })
-  email!: string
+  email!: string;
+
+  @Column({ type: 'boolean', default: false })
+  hasVoted!: boolean;
 }

@@ -1,20 +1,26 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity({ name: 'votes' })
 @Index(['voteId', 'mssv'], { unique: true })
 export class Vote {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column({ type: 'varchar', length: 100 })
-  voteId!: string
+  voteId!: string;
 
   @Column({ type: 'varchar', length: 100 })
-  nomineeId!: string
+  nomineeId!: string;
 
   @Column({ type: 'varchar', length: 50 })
-  mssv!: string
+  mssv!: string;
 
   @CreateDateColumn()
-  createdAt!: Date
+  createdAt!: Date;
 }

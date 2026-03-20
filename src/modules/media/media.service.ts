@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
-import { Media } from './entities/media.entity'
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Media } from './entities/media.entity';
 
 @Injectable()
 export class MediaService {
@@ -11,19 +11,19 @@ export class MediaService {
   ) {}
 
   findAll() {
-    return this.mediaRepo.find({ order: { createdAt: 'DESC' } })
+    return this.mediaRepo.find({ order: { createdAt: 'DESC' } });
   }
 
   findOne(id: string) {
-    return this.mediaRepo.findOneBy({ id })
+    return this.mediaRepo.findOneBy({ id });
   }
 
   create(dto: Partial<Media>) {
-    const entity = this.mediaRepo.create(dto)
-    return this.mediaRepo.save(entity)
+    const entity = this.mediaRepo.create(dto);
+    return this.mediaRepo.save(entity);
   }
 
   delete(id: string) {
-    return this.mediaRepo.delete(id)
+    return this.mediaRepo.delete(id);
   }
 }

@@ -1,99 +1,55 @@
-import { Injectable, NotFoundException, UnauthorizedException, ConflictException, OnModuleInit } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
-import { OAuth2Client, TokenPayload } from 'google-auth-library'
-import { Voter } from '@modules/users/entities/user.entity'
-import { Vote } from './entities/vote.entity'
-import { Category } from '../categories/entities/category.entity'
-import { Nominee } from '../nominees/entities/nominee.entity'
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
+import { OAuth2Client, TokenPayload } from 'google-auth-library';
+import { Voter } from '@modules/users/entities/user.entity';
+import { Vote } from './entities/vote.entity';
+import { Category } from '../categories/entities/category.entity';
+import { Nominee } from '../nominees/entities/nominee.entity';
+import { Media } from '../media/entities/media.entity';
 
-export type VoteCategoryType = 'person' | 'club' | 'event'
+export type VoteCategoryType = 'person' | 'club' | 'event';
 
 export interface VoteCategory {
-  id: string
-  slug: string
-  title: string
-  type: VoteCategoryType
-  themeColor?: string
-  description?: string
-  date?: string
-  location?: string
+  id: string;
+  slug: string;
+  title: string;
+  type: VoteCategoryType;
+  themeColor?: string;
+  description?: string;
+  date?: string;
+  location?: string;
 }
 
-export interface Nominee {
-  id: string
-  name: string
-  imageUrl?: string
-  description?: string
-  date?: string
-  location?: string
+export interface VoteNominee {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  description?: string;
+  date?: string;
+  location?: string;
 }
+
+type SeedNominee = {
+  name: string;
+  description?: string;
+};
 
 export interface VoteSubmission {
-  voteId: string
-  nomineeId: string
-  mssv: string
-  idToken: string
+  voteId: string;
+  nomineeId: string;
+  mssv: string;
+  idToken: string;
 }
 
 @Injectable()
 export class VotesService {
-  private readonly oauthClient: OAuth2Client
-
-  private readonly defaultCategories: VoteCategory[] = [
-    {
-      id: 'fanpage',
-      slug: 'fanpage',
-      title: 'Fanpage',
-      type: 'club',
-      themeColor: '#A77A57',
-    },
-    {
-      id: 'club',
-      slug: 'club',
-      title: 'Câu lạc bộ',
-      type: 'club',
-      description:
-        'Bình chọn Câu lạc bộ xuất sắc nhất – Đây là danh hiệu dành cho câu lạc bộ có nhiều hoạt động nổi bật, tinh thần sáng tạo và đóng góp tích cực cho cộng đồng. Chỉ được chọn một câu lạc bộ; phiếu bầu của bạn sẽ được tổng hợp để xác định người chiến thắng.',
-    },
-    {
-      id: 'event',
-      slug: 'event',
-      title: 'Sự kiện',
-      type: 'event',
-      description:
-        'Bình chọn Sự kiện xuất sắc nhất – Đây là danh hiệu dành cho sự kiện có nhiều hoạt động nổi bật, tinh thần sáng tạo và đóng góp tích cực cho cộng đồng. Chỉ được chọn một sự kiện; phiếu bầu của bạn sẽ được tổng hợp để xác định người chiến thắng.',
-    },
-    {
-      id: 'personal',
-      slug: 'personal',
-      title: 'Cá nhân',
-      type: 'person',
-      description:
-        'Bình chọn Cá nhân xuất sắc nhất – Đây là danh hiệu dành cho cá nhân có nhiều hoạt động nổi bật, tinh thần sáng tạo và đóng góp tích cực cho cộng đồng. Chỉ được chọn một cá nhân; phiếu bầu của bạn sẽ được tổng hợp để xác định người chiến thắng.',
-    },
-  ]
-
-  private readonly defaultNominees: Record<string, Array<Omit<Nominee, 'date' | 'location'>>> = {
-    fanpage: [
-      { name: 'Fanpage One', description: 'Popular fanpage' },
-      { name: 'Fanpage Two', description: 'Another fanpage' },
-    ],
-    club: [
-      { name: 'Chess Club', description: 'Strategy and fun' },
-      { name: 'Drama Club', description: 'Acting ensemble' },
-    ],
-    event: [
-      { name: 'Spring Festival', description: 'Annual celebration' },
-      { name: 'Hackathon', description: '24h coding' },
-      { name: 'Music Concert', description: 'Live performances' },
-      { name: 'Charity Run' },
-    ],
-    personal: [
-      { name: 'Alice Nguyen', description: 'Top contributor' },
-      { name: 'Bob Tran', description: 'Community leader' },
-    ],
-  }
+  private readonly oauthClient: OAuth2Client;
 
   constructor(
     @InjectRepository(Voter)
@@ -104,99 +60,71 @@ export class VotesService {
     private readonly categoryRepo: Repository<Category>,
     @InjectRepository(Nominee)
     private readonly nomineeRepo: Repository<Nominee>,
+    @InjectRepository(Media)
+    private readonly mediaRepo: Repository<Media>,
   ) {
-    this.oauthClient = new OAuth2Client(process.env.GOOGLE_OAUTH_CLIENT_ID)
-  }
-
-  async onModuleInit() {
-    await this.ensureSeedData()
-  }
-
-  private async ensureSeedData() {
-    for (const category of this.defaultCategories) {
-      let existingCategory = await this.categoryRepo.findOneBy({ slug: category.slug })
-      if (!existingCategory) {
-        existingCategory = await this.categoryRepo.save(
-          this.categoryRepo.create({
-            slug: category.slug,
-            title: category.title,
-            description: category.description,
-            type: category.type,
-          }),
-        )
-      }
-
-      const nomineeCount = await this.nomineeRepo.count({ where: { categoryId: existingCategory.id } })
-      if (nomineeCount === 0) {
-        const nomineesToInsert: Partial<Nominee>[] = (this.defaultNominees[category.slug] ?? []).map(
-          (nominee) => ({
-            categoryId: existingCategory.id,
-            name: nominee.name,
-            description: nominee.description,
-          }),
-        )
-        if (nomineesToInsert.length) {
-          await this.nomineeRepo.save(nomineesToInsert)
-        }
-      }
-    }
+    this.oauthClient = new OAuth2Client(process.env.GOOGLE_OAUTH_CLIENT_ID);
   }
 
   getCategories(): Promise<VoteCategory[]> {
-    return this.categoryRepo
-      .find({ order: { slug: 'ASC' } })
-      .then((cats) =>
-        cats.map((cat) => ({
-          id: cat.slug,
-          slug: cat.slug,
-          title: cat.title,
-          type: cat.type as VoteCategoryType,
-          description: cat.description,
-        })),
-      )
+    return this.categoryRepo.find({ order: { slug: 'ASC' } }).then((cats) =>
+      cats.map((cat) => ({
+        id: cat.slug,
+        slug: cat.slug,
+        title: cat.title,
+        type: cat.type as VoteCategoryType,
+        description: cat.description,
+      })),
+    );
   }
 
-  async getNominees(voteId: string): Promise<Nominee[]> {
-    const category = await this.categoryRepo.findOneBy({ slug: voteId })
+  async getNominees(voteId: string): Promise<VoteNominee[]> {
+    const category = await this.categoryRepo.findOneBy({ slug: voteId });
     if (!category) {
-      throw new NotFoundException(`Unknown vote category: ${voteId}`)
+      throw new NotFoundException(`Unknown vote category: ${voteId}`);
     }
 
-    const nominees = await this.nomineeRepo.find({ where: { categoryId: category.id } })
+    const nominees = await this.nomineeRepo.find({
+      where: { categoryId: category.id },
+      relations: ['media'],
+      order: { name: 'ASC' },
+    });
     return nominees.map((n) => ({
       id: n.id,
       name: n.name,
       description: n.description,
-      imageUrl: n.imageUrl,
-      date: n.metadata?.date as string,
-      location: n.metadata?.location as string,
-    }))
+      imageUrl: n.media?.[0]?.url,
+      date: undefined,
+      location: undefined,
+    }));
   }
 
   async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission) {
-    const voter = await this.voterRepo.findOneBy({ mssv })
+    const voter = await this.voterRepo.findOneBy({ mssv });
     if (!voter) {
-      throw new NotFoundException('Voter not found')
+      throw new NotFoundException('Voter not found');
     }
 
-    const payload = await this.verifyGoogleToken(idToken)
+    const payload = await this.verifyGoogleToken(idToken);
     if (!payload || payload.email !== voter.email || !payload.email_verified) {
-      throw new UnauthorizedException('Invalid Google authentication')
+      throw new UnauthorizedException('Invalid Google authentication');
     }
 
-    const nominees = await this.getNominees(voteId)
-    const nomineeExists = nominees.some((n) => n.id === nomineeId)
+    const nominees = await this.getNominees(voteId);
+    const nomineeExists = nominees.some((n) => n.id === nomineeId);
     if (!nomineeExists) {
-      throw new NotFoundException(`Unknown nominee id: ${nomineeId}`)
+      throw new NotFoundException(`Unknown nominee id: ${nomineeId}`);
     }
 
     // Restrict one vote per MSSV per vote category
-    const existing = await this.voteRepo.findOneBy({ voteId, mssv })
+    const existing = await this.voteRepo.findOneBy({ voteId, mssv });
     if (existing) {
-      throw new ConflictException('This MSSV has already voted for this category')
+      throw new ConflictException(
+        'This MSSV has already voted for this category',
+      );
     }
 
-    await this.voteRepo.save({ voteId, nomineeId, mssv })
+    await this.voteRepo.save({ voteId, nomineeId, mssv });
   }
 
   async getVoteHistory(mssv: string) {
@@ -212,7 +140,6 @@ export class VotesService {
         'nominee.id AS nominee_id',
         'nominee.name AS nominee_name',
         'nominee.description AS nominee_description',
-        'nominee.imageUrl AS nominee_imageUrl',
       ])
       .addSelect([
         'category.id AS category_id',
@@ -223,7 +150,19 @@ export class VotesService {
       .leftJoin(Category, 'category', 'category.id = nominee.categoryId')
       .where('vote.mssv = :mssv', { mssv })
       .orderBy('vote.createdAt', 'DESC')
-      .getRawMany<any>()
+      .getRawMany<any>();
+
+    const nomineeIds = Array.from(new Set(history.map((r) => r.nominee_id)));
+    const medias = await this.mediaRepo.find({
+      where: { nomineeId: In(nomineeIds) },
+      order: { createdAt: 'ASC' },
+    });
+    const mediaMap = medias.reduce((acc, media) => {
+      if (!acc[media.nomineeId]) {
+        acc[media.nomineeId] = media;
+      }
+      return acc;
+    }, {} as Record<string, Media>);
 
     return history.map((row) => ({
       id: row.vote_id,
@@ -233,18 +172,18 @@ export class VotesService {
         id: row.nominee_id,
         name: row.nominee_name,
         description: row.nominee_description,
-        imageUrl: row.nominee_imageUrl,
+        imageUrl: mediaMap[row.nominee_id]?.url,
       },
       category: {
         id: row.category_id,
         slug: row.category_slug,
         title: row.category_title,
       },
-    }))
+    }));
   }
 
   async getResults(voteId: string): Promise<Record<string, number>> {
-    const nominees = await this.getNominees(voteId)
+    const nominees = await this.getNominees(voteId);
 
     const raw = await this.voteRepo
       .createQueryBuilder('vote')
@@ -252,32 +191,43 @@ export class VotesService {
       .addSelect('COUNT(vote.id)', 'count')
       .where('vote.voteId = :voteId', { voteId })
       .groupBy('vote.nomineeId')
-      .getRawMany<{ nomineeId: string; count: string }>()
+      .getRawMany<{ nomineeId: string; count: string }>();
 
-    const counts = raw.reduce((acc, row) => {
-      acc[row.nomineeId] = Number(row.count)
-      return acc
-    }, {} as Record<string, number>)
+    const counts = raw.reduce(
+      (acc, row) => {
+        acc[row.nomineeId] = Number(row.count);
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
-    return nominees.reduce((acc, nominee) => {
-      acc[nominee.id] = counts[nominee.id] ?? 0
-      return acc
-    }, {} as Record<string, number>)
+    return nominees.reduce(
+      (acc, nominee) => {
+        acc[nominee.id] = counts[nominee.id] ?? 0;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
   }
 
-  private async verifyGoogleToken(idToken: string): Promise<TokenPayload | null> {
-    if (process.env.NODE_ENV === 'test' || process.env.SKIP_GOOGLE_OAUTH === 'true') {
+  private async verifyGoogleToken(
+    idToken: string,
+  ): Promise<TokenPayload | null> {
+    if (
+      process.env.NODE_ENV === 'test' ||
+      process.env.SKIP_GOOGLE_OAUTH === 'true'
+    ) {
       return {
         email: 'student@example.com',
         email_verified: true,
-      } as unknown as TokenPayload
+      } as unknown as TokenPayload;
     }
 
     const ticket = await this.oauthClient.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_OAUTH_CLIENT_ID,
-    })
-    return ticket.getPayload() ?? null
+    });
+    return ticket.getPayload() ?? null;
   }
 
   /**
@@ -285,13 +235,17 @@ export class VotesService {
    * Not used by default, but can be hooked into controllers as needed.
    */
   isVotingOpen(): boolean {
-    const start = process.env.VOTE_DATE_START ? new Date(process.env.VOTE_DATE_START) : null
-    const end = process.env.VOTE_DATE_END ? new Date(process.env.VOTE_DATE_END) : null
-    const now = new Date()
+    const start = process.env.VOTE_DATE_START
+      ? new Date(process.env.VOTE_DATE_START)
+      : null;
+    const end = process.env.VOTE_DATE_END
+      ? new Date(process.env.VOTE_DATE_END)
+      : null;
+    const now = new Date();
 
-    if (!start && !end) return true
-    if (start && now < start) return false
-    if (end && now > end) return false
-    return true
+    if (!start && !end) return true;
+    if (start && now < start) return false;
+    if (end && now > end) return false;
+    return true;
   }
 }

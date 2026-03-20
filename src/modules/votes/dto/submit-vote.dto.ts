@@ -1,27 +1,27 @@
-import { IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator'
-import { Type } from 'class-transformer'
+import { IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class VoteChoiceDto {
   @IsString()
   @IsNotEmpty()
-  voteId!: string
+  voteId!: string;
 
   @IsString()
   @IsNotEmpty()
-  nomineeId!: string
+  nomineeId!: string;
 }
 
 export class SubmitVoteDto {
   @IsString()
   @IsNotEmpty()
-  mssv!: string
+  mssv!: string;
 
   @IsString()
   @IsNotEmpty()
-  idToken!: string
+  idToken!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => VoteChoiceDto)
-  choices!: VoteChoiceDto[]
+  choices!: VoteChoiceDto[];
 }
