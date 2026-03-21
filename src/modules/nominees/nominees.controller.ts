@@ -29,6 +29,11 @@ export class NomineesController {
     return this.nomineesService.findAll(categoryId);
   }
 
+  @Get('category/:categoryId')
+  findByCategoryId(@Param('categoryId') categoryId: string) {
+    return this.nomineesService.findAll(categoryId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.nomineesService.findOne(id);

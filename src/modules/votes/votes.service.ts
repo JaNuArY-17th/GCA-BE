@@ -47,6 +47,10 @@ export interface VoteSubmission {
   idToken: string;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 @Injectable()
 export class VotesService {
   private readonly oauthClient: OAuth2Client;
@@ -69,7 +73,7 @@ export class VotesService {
   getCategories(): Promise<VoteCategory[]> {
     return this.categoryRepo.find({ order: { slug: 'ASC' } }).then((cats) =>
       cats.map((cat) => ({
-        id: cat.slug,
+        id: cat.id,
         slug: cat.slug,
         title: cat.title,
         type: cat.type as VoteCategoryType,
@@ -78,11 +82,24 @@ export class VotesService {
     );
   }
 
-  async getNominees(voteId: string): Promise<VoteNominee[]> {
-    const category = await this.categoryRepo.findOneBy({ slug: voteId });
+  private async findCategoryByIdOrSlug(voteId: string): Promise<Category> {
+    let category: Category | null = null;
+
+    if (isUuid(voteId)) {
+      category = await this.categoryRepo.findOneBy({ id: voteId });
+    }
+
+    if (!category) {
+      category = await this.categoryRepo.findOneBy({ slug: voteId });
+    }
     if (!category) {
       throw new NotFoundException(`Unknown vote category: ${voteId}`);
     }
+    return category;
+  }
+
+  async getNominees(voteId: string): Promise<VoteNominee[]> {
+    const category = await this.findCategoryByIdOrSlug(voteId);
 
     const nominees = await this.nomineeRepo.find({
       where: { categoryId: category.id },
@@ -94,12 +111,15 @@ export class VotesService {
       name: n.name,
       description: n.description,
       imageUrl: n.media?.[0]?.url,
+      imageUrls: n.media?.map((m) => m.url) ?? [],
       date: undefined,
       location: undefined,
     }));
   }
 
   async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission) {
+    const category = await this.findCategoryByIdOrSlug(voteId);
+
     const voter = await this.voterRepo.findOneBy({ mssv });
     if (!voter) {
       throw new NotFoundException('Voter not found');
@@ -110,21 +130,21 @@ export class VotesService {
       throw new UnauthorizedException('Invalid Google authentication');
     }
 
-    const nominees = await this.getNominees(voteId);
+    const nominees = await this.getNominees(category.id);
     const nomineeExists = nominees.some((n) => n.id === nomineeId);
     if (!nomineeExists) {
       throw new NotFoundException(`Unknown nominee id: ${nomineeId}`);
     }
 
     // Restrict one vote per MSSV per vote category
-    const existing = await this.voteRepo.findOneBy({ voteId, mssv });
+    const existing = await this.voteRepo.findOneBy({ voteId: category.id, mssv });
     if (existing) {
       throw new ConflictException(
         'This MSSV has already voted for this category',
       );
     }
 
-    await this.voteRepo.save({ voteId, nomineeId, mssv });
+    await this.voteRepo.save({ voteId: category.id, nomineeId, mssv });
   }
 
   async getVoteHistory(mssv: string) {
@@ -183,13 +203,16 @@ export class VotesService {
   }
 
   async getResults(voteId: string): Promise<Record<string, number>> {
-    const nominees = await this.getNominees(voteId);
+    const category = await this.findCategoryByIdOrSlug(voteId);
+    const nominees = await this.getNominees(category.id);
 
     const raw = await this.voteRepo
       .createQueryBuilder('vote')
       .select('vote.nomineeId', 'nomineeId')
       .addSelect('COUNT(vote.id)', 'count')
-      .where('vote.voteId = :voteId', { voteId })
+      .where('vote.voteId IN (:...voteIds)', {
+        voteIds: [category.id, category.slug],
+      })
       .groupBy('vote.nomineeId')
       .getRawMany<{ nomineeId: string; count: string }>();
 

@@ -25,16 +25,39 @@ export class NomineesService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  findAll(categoryId?: string) {
+  async findAll(categoryId?: string) {
     const where = categoryId ? { categoryId } : {};
-    return this.nomineeRepo.find({
+    const nominees = await this.nomineeRepo.find({
       where,
+      relations: ['media'],
       order: { name: 'ASC' },
     });
+
+    return nominees.map((n) => ({
+      id: n.id,
+      name: n.name,
+      description: n.description,
+      categoryId: n.categoryId,
+      imageUrls: n.media?.map((m) => m.url) ?? [],
+    }));
   }
 
-  findOne(id: string) {
-    return this.nomineeRepo.findOneBy({ id });
+  async findOne(id: string) {
+    const nominee = await this.nomineeRepo.findOne({
+      where: { id },
+      relations: ['media'],
+    });
+    if (!nominee) {
+      return null;
+    }
+
+    return {
+      id: nominee.id,
+      name: nominee.name,
+      description: nominee.description,
+      categoryId: nominee.categoryId,
+      imageUrls: nominee.media?.map((m) => m.url) ?? [],
+    };
   }
 
   create(data: Partial<Nominee>) {
