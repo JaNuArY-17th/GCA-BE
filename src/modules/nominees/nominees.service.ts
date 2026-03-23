@@ -74,7 +74,10 @@ export class NomineesService {
     return this.nomineeRepo.delete(id);
   }
 
-  async uploadImage(id: string, file: Express.Multer.File) {
+  private async buildMediaForImage(
+    nomineeId: string,
+    file: Express.Multer.File,
+  ): Promise<Media> {
     const typed = file as Express.Multer.File | undefined;
     if (!typed || !typed.buffer) {
       throw new BadRequestException('No file provided');
@@ -101,16 +104,47 @@ export class NomineesService {
       public_id?: string;
     };
 
-    await this.mediaRepo.save(
-      this.mediaRepo.create({
-        nomineeId: id,
-        url: upload.secure_url,
-        filename: upload.public_id,
-        mimeType: upload.format,
-        size: upload.bytes,
-      }),
+    return this.mediaRepo.create({
+      nomineeId,
+      url: upload.secure_url,
+      filename: upload.public_id,
+      mimeType: upload.format,
+      size: upload.bytes,
+    });
+  }
+
+  async uploadImage(id: string, file: Express.Multer.File) {
+    const media = await this.buildMediaForImage(id, file);
+    await this.mediaRepo.save(media);
+    return this.findOne(id);
+  }
+
+  async createWithImages(
+    data: Partial<Nominee>,
+    files?: Express.Multer.File[],
+  ) {
+    const nominee = await this.create(data);
+
+    if (files && files.length) {
+      const mediaEntities = await Promise.all(
+        files.map((file) => this.buildMediaForImage(nominee.id, file)),
+      );
+      await this.mediaRepo.save(mediaEntities);
+    }
+
+    return this.findOne(nominee.id);
+  }
+
+  async uploadImages(id: string, files: Express.Multer.File[]) {
+    if (!files || !files.length) {
+      throw new BadRequestException('No files provided');
+    }
+
+    const mediaEntities = await Promise.all(
+      files.map((file) => this.buildMediaForImage(id, file)),
     );
 
+    await this.mediaRepo.save(mediaEntities);
     return this.findOne(id);
   }
 }

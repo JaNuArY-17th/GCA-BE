@@ -10,10 +10,11 @@ import {
   Put,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { FileFilterCallback } from 'multer';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -41,7 +42,23 @@ export class NomineesController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() dto: Partial<Nominee>) {
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file: Express.Multer.File, cb: FileFilterCallback) => {
+        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        cb(null, allowed.includes(file.mimetype));
+      },
+    }),
+  )
+  create(
+    @Body() dto: Partial<Nominee>,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    if (files && files.length > 0) {
+      return this.nomineesService.createWithImages(dto, files);
+    }
     return this.nomineesService.create(dto);
   }
 
@@ -63,6 +80,25 @@ export class NomineesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.nomineesService.uploadImage(id, file);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/images')
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file: Express.Multer.File, cb: FileFilterCallback) => {
+        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        cb(null, allowed.includes(file.mimetype));
+      },
+    }),
+  )
+  uploadImages(
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.nomineesService.uploadImages(id, files);
   }
 
   @UseGuards(JwtAuthGuard)
