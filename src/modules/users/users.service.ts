@@ -22,6 +22,9 @@ export class UsersService {
     if (voter.mssv) {
       voter.mssv = this.normalizeMssv(voter.mssv);
     }
+    if (voter.email) {
+      voter.email = String(voter.email).trim().toLowerCase();
+    }
     return this.voterRepo.save(voter);
   }
 
@@ -29,6 +32,7 @@ export class UsersService {
     const normalized = voters.map((v) => ({
       ...v,
       mssv: v.mssv ? this.normalizeMssv(v.mssv) : v.mssv,
+      email: v.email ? String(v.email).trim().toLowerCase() : v.email,
     }));
 
     const entities = this.voterRepo.create(normalized);

@@ -131,7 +131,10 @@ export class VotesService {
     }
 
     const payload = await this.verifyGoogleToken(idToken);
-    if (!payload || payload.email !== voter.email || !payload.email_verified) {
+    const tokenEmail = payload?.email ? String(payload.email).trim().toLowerCase() : '';
+    const voterEmail = voter.email ? String(voter.email).trim().toLowerCase() : '';
+
+    if (!payload || tokenEmail !== voterEmail || !payload.email_verified) {
       throw new UnauthorizedException('Invalid Google authentication');
     }
 

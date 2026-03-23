@@ -68,29 +68,22 @@ export class UsersController {
       .map((row) => {
         const keys = Object.keys(row);
 
+        // Excel expected order: STT, MSSV, Họ và Tên, Email FPT
         const mssv = normalize(
-          row['mssv'] ??
-            row['MSSV'] ??
-            row['mã sv'] ??
-            row['Mã SV'] ??
-            row['id'] ??
-            (keys[0] ? row[keys[0]] : ''),
-        );
-        const fullname = normalize(
-          row['fullname'] ??
-            row['FullName'] ??
-            row['name'] ??
-            row['Name'] ??
-            row['họ tên'] ??
-            row['Họ tên'] ??
+          row['MSSV'] ?? row['mssv'] ?? row['Mã SV'] ?? row['mã sv'] ?? row['id'] ??
             (keys[1] ? row[keys[1]] : ''),
         );
-        const email = normalize(
-          row['email'] ??
-            row['Email'] ??
-            row['mail'] ??
-            row['Mail'] ??
+
+        const fullname = normalize(
+          row['Họ và Tên'] ?? row['Họ tên'] ?? row['họ và tên'] ?? row['họ tên'] ?? row['FullName'] ??
+            row['fullname'] ?? row['name'] ?? row['Name'] ??
             (keys[2] ? row[keys[2]] : ''),
+        );
+
+        const email = normalize(
+          row['Email FPT'] ?? row['email fpt'] ?? row['Email'] ?? row['email'] ??
+            row['Mail'] ?? row['mail'] ??
+            (keys[3] ? row[keys[3]] : ''),
         );
 
         return { fullname, mssv, email };
