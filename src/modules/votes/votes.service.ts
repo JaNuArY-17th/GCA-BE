@@ -127,7 +127,7 @@ export class VotesService {
 
     const voter = await this.voterRepo.findOneBy({ mssv: normalizedMssv });
     if (!voter) {
-      throw new NotFoundException('Voter not found');
+      throw new NotFoundException('Không tìm thấy người dùng với MSSV này.');
     }
 
     const payload = await this.verifyGoogleToken(idToken);
@@ -135,20 +135,20 @@ export class VotesService {
     const voterEmail = voter.email ? String(voter.email).trim().toLowerCase() : '';
 
     if (!payload || tokenEmail !== voterEmail || !payload.email_verified) {
-      throw new UnauthorizedException('Invalid Google authentication');
+      throw new UnauthorizedException('Email không hợp lệ! \nVui lòng sử dụng Email đăng nhập trên AP.');
     }
 
     const nominees = await this.getNominees(category.id);
     const nomineeExists = nominees.some((n) => n.id === nomineeId);
     if (!nomineeExists) {
-      throw new NotFoundException(`Unknown nominee id: ${nomineeId}`);
+      throw new NotFoundException(`Không tìm thấy ứng viên.`);
     }
 
     // Restrict one vote per MSSV per vote category
     const existing = await this.voteRepo.findOneBy({ voteId: category.id, mssv: normalizedMssv });
     if (existing) {
       throw new ConflictException(
-        'This MSSV has already voted for this category',
+        'MSSV này đã bỏ phiếu.',
       );
     }
 

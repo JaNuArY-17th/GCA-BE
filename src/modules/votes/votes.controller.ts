@@ -58,7 +58,10 @@ export class VotesController {
       ),
     );
 
-    return { success: true };
+    return {
+      success: true,
+      message: 'Bình chọn thành công!',
+    };
   }
 
   @Get('votes/:voteId/results')
