@@ -10,16 +10,28 @@ export class UsersService {
     private readonly voterRepo: Repository<Voter>,
   ) {}
 
+  private normalizeMssv(mssv: string): string {
+    return String(mssv || '').trim().toUpperCase();
+  }
+
   findByMssv(mssv: string) {
-    return this.voterRepo.findOneBy({ mssv });
+    return this.voterRepo.findOneBy({ mssv: this.normalizeMssv(mssv) });
   }
 
   async createVoter(voter: Partial<Voter>) {
+    if (voter.mssv) {
+      voter.mssv = this.normalizeMssv(voter.mssv);
+    }
     return this.voterRepo.save(voter);
   }
 
   async createBatch(voters: Partial<Voter>[]) {
-    const entities = this.voterRepo.create(voters);
+    const normalized = voters.map((v) => ({
+      ...v,
+      mssv: v.mssv ? this.normalizeMssv(v.mssv) : v.mssv,
+    }));
+
+    const entities = this.voterRepo.create(normalized);
     return this.voterRepo.save(entities);
   }
 }

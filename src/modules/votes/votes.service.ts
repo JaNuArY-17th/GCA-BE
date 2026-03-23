@@ -117,10 +117,15 @@ export class VotesService {
     }));
   }
 
+  private normalizeMssv(mssv: string): string {
+    return String(mssv || '').trim().toUpperCase();
+  }
+
   async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission) {
+    const normalizedMssv = this.normalizeMssv(mssv);
     const category = await this.findCategoryByIdOrSlug(voteId);
 
-    const voter = await this.voterRepo.findOneBy({ mssv });
+    const voter = await this.voterRepo.findOneBy({ mssv: normalizedMssv });
     if (!voter) {
       throw new NotFoundException('Voter not found');
     }
@@ -137,17 +142,22 @@ export class VotesService {
     }
 
     // Restrict one vote per MSSV per vote category
-    const existing = await this.voteRepo.findOneBy({ voteId: category.id, mssv });
+    const existing = await this.voteRepo.findOneBy({ voteId: category.id, mssv: normalizedMssv });
     if (existing) {
       throw new ConflictException(
         'This MSSV has already voted for this category',
       );
     }
 
-    await this.voteRepo.save({ voteId: category.id, nomineeId, mssv });
+    await this.voteRepo.save({ voteId: category.id, nomineeId, mssv: normalizedMssv });
+
+    // Mark voter flag
+    await this.voterRepo.update({ id: voter.id }, { hasVoted: true });
   }
 
   async getVoteHistory(mssv: string) {
+    const normalizedMssv = this.normalizeMssv(mssv);
+
     const history = await this.voteRepo
       .createQueryBuilder('vote')
       .select([
@@ -168,7 +178,7 @@ export class VotesService {
       ])
       .leftJoin(Nominee, 'nominee', 'nominee.id = vote.nomineeId')
       .leftJoin(Category, 'category', 'category.id = nominee.categoryId')
-      .where('vote.mssv = :mssv', { mssv })
+      .where('vote.mssv = :mssv', { mssv: normalizedMssv })
       .orderBy('vote.createdAt', 'DESC')
       .getRawMany<any>();
 

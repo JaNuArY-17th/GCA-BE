@@ -24,12 +24,18 @@ export class VotesController {
     return this.votesService.getNominees(voteId);
   }
 
+  private normalizeMssv(mssv: string): string {
+    return String(mssv || '').trim().toUpperCase();
+  }
+
   @Post('votes')
   @HttpCode(201)
   async submitVote(@Body() body: SubmitVoteDto) {
     if (!body?.mssv || !body?.idToken) {
       throw new NotFoundException('Missing mssv or idToken');
     }
+
+    const mssv = this.normalizeMssv(body.mssv);
 
     const choices = body.choices?.length
       ? body.choices
@@ -46,7 +52,7 @@ export class VotesController {
         this.votesService.submitVote({
           voteId: choice.voteId,
           nomineeId: choice.nomineeId,
-          mssv: body.mssv,
+          mssv,
           idToken: body.idToken,
         }),
       ),
