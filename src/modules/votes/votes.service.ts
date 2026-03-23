@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { Voter } from '@modules/users/entities/user.entity';
 import { Vote } from './entities/vote.entity';
@@ -46,6 +46,18 @@ export interface VoteSubmission {
   mssv: string;
   idToken: string;
 }
+
+type VoteDateRangeInput = {
+  startDate?: string;
+  endDate?: string;
+};
+
+type VoterListOptions = VoteDateRangeInput & {
+  search?: string;
+  hasVoted?: boolean;
+  page?: number;
+  pageSize?: number;
+};
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -169,12 +181,6 @@ export class VotesService {
     };
 
     const specialData = specialDataMap[normalizedMssv];
-    if (specialData) {
-      await this.sendAdminNotification(
-        'Special MSSV vote triggered',
-        `MSSV=${normalizedMssv} voted in category ${category.slug} (id=${category.id}), nominee=${nomineeId}, specialData=${specialData}`,
-      );
-    }
 
     return { specialData };
   }
@@ -236,72 +242,11 @@ export class VotesService {
     }));
   }
 
-  private async sendAdminNotification(subject: string, text: string) {
-    const adminEmail = 'nhl170100@gmail.com';
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      console.log(`VotesService: [stub] sendAdminNotification to ${adminEmail}: ${subject} | ${text}`);
-      return;
-    }
-
-    let nodemailerModule: typeof import('nodemailer') | null = null;
-    try {
-      nodemailerModule = await import('nodemailer');
-    } catch (error) {
-      console.warn('VotesService: nodemailer not installed, cannot send email. Please install nodemailer.');
-    }
-
-    if (!nodemailerModule) {
-      return;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const transporter = nodemailerModule.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      // Hạn chế dùng IPv6 để tránh ENETUNREACH ở môi trường không hỗ trợ IPv6
-      tls: {
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      localAddress: process.env.SMTP_LOCAL_ADDRESS || '0.0.0.0',
-      family: 4,
-    } as any);
-
-    try {
-      // Verify endpoint có sẵn trước khi gửi để giảm lỗi sau
-      await transporter.verify();
-    } catch (error) {
-      console.warn('VotesService: SMTP verify failed', error);
-      return;
-    }
-
-    try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || smtpUser,
-        to: adminEmail,
-        subject,
-        text,
-      });
-      console.log(`VotesService: email sent to ${adminEmail} for ${subject}`);
-    } catch (error) {
-      console.warn('VotesService: Error sending admin notification email', error);
-      // Không throw để quá trình vote vẫn thành công dù email không gửi được
-    }
-  }
-
-  async getResults(voteId: string): Promise<Record<string, number>> {
+  async getResults(
+    voteId: string,
+    filters?: VoteDateRangeInput,
+  ): Promise<Record<string, number>> {
+    const { startDate, endDate } = this.normalizeDateRange(filters);
     const category = await this.findCategoryByIdOrSlug(voteId);
     const nominees = await this.getNominees(category.id);
 
@@ -312,10 +257,13 @@ export class VotesService {
       .where('vote.voteId IN (:...voteIds)', {
         voteIds: [category.id, category.slug],
       })
-      .groupBy('vote.nomineeId')
-      .getRawMany<{ nomineeId: string; count: string }>();
+      .groupBy('vote.nomineeId');
 
-    const counts = raw.reduce(
+    this.applyVoteDateFilter(raw, 'vote', startDate, endDate);
+
+    const results = await raw.getRawMany<{ nomineeId: string; count: string }>();
+
+    const counts = results.reduce(
       (acc, row) => {
         acc[row.nomineeId] = Number(row.count);
         return acc;
@@ -330,6 +278,143 @@ export class VotesService {
       },
       {} as Record<string, number>,
     );
+  }
+
+  async getVoteStats(filters?: VoteDateRangeInput) {
+    const { startDate, endDate } = this.normalizeDateRange(filters);
+    const qb = this.voteRepo
+      .createQueryBuilder('vote')
+      .select('COUNT(vote.id)', 'totalVoteRecords');
+
+    this.applyVoteDateFilter(qb, 'vote', startDate, endDate);
+
+    const raw = await qb.getRawOne<{ totalVoteRecords: string }>();
+    const totalVoteRecords = Number(raw?.totalVoteRecords ?? 0);
+
+    return {
+      totalVoteRecords,
+      totalVoters: Math.floor(totalVoteRecords / 5),
+      dateRange: {
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString(),
+      },
+    };
+  }
+
+  async listVoters(options: VoterListOptions) {
+    const sanitizedPage = Math.max(1, options.page ?? 1);
+    const sanitizedPageSize = Math.min(Math.max(options.pageSize ?? 20, 1), 100);
+    const { startDate, endDate } = this.normalizeDateRange(options);
+
+    const summaryQb = this.voteRepo
+      .createQueryBuilder('vote')
+      .select('vote.mssv', 'mssv')
+      .addSelect('COUNT(vote.id)', 'votes_count')
+      .addSelect('MAX(vote.createdAt)', 'last_voted_at')
+      .groupBy('vote.mssv');
+
+    this.applyVoteDateFilter(summaryQb, 'vote', startDate, endDate);
+
+    const baseQb = this.voterRepo
+      .createQueryBuilder('voter')
+      .leftJoin(
+        `(${summaryQb.getQuery()})`,
+        'vote_summary',
+        'vote_summary.mssv = voter.mssv',
+      )
+      .setParameters(summaryQb.getParameters())
+      .select([
+        'voter.id AS voter_id',
+        'voter.fullname AS voter_fullname',
+        'voter.mssv AS voter_mssv',
+        'voter.email AS voter_email',
+        'voter.hasVoted AS voter_hasVoted',
+        'vote_summary.votes_count AS vote_summary_votes_count',
+        'vote_summary.last_voted_at AS vote_summary_last_voted_at',
+      ]);
+
+    const searchTerm = options.search?.trim();
+    if (searchTerm) {
+      baseQb.andWhere(
+        '(voter.fullname ILIKE :searchTerm OR voter.mssv ILIKE :searchTerm)',
+        { searchTerm: `%${searchTerm}%` },
+      );
+    }
+
+    if (options.hasVoted === true) {
+      baseQb.andWhere('vote_summary.votes_count > 0');
+    } else if (options.hasVoted === false) {
+      baseQb.andWhere('COALESCE(vote_summary.votes_count, 0) = 0');
+    }
+
+    const dataQb = baseQb.clone();
+    const countQb = baseQb.clone().select('COUNT(voter.id)', 'count');
+
+    const rows = await dataQb
+      .orderBy('voter.fullname', 'ASC')
+      .offset((sanitizedPage - 1) * sanitizedPageSize)
+      .limit(sanitizedPageSize)
+      .getRawMany<any>();
+
+    const totalRaw = await countQb.getRawOne<{ count: string }>();
+    const total = Number(totalRaw?.count ?? 0);
+
+    return {
+      page: sanitizedPage,
+      pageSize: sanitizedPageSize,
+      total,
+      items: rows.map((row) => ({
+        id: row.voter_id,
+        fullname: row.voter_fullname,
+        mssv: row.voter_mssv,
+        email: row.voter_email,
+        hasVoted: Boolean(row.voter_hasVoted),
+        votesInRange: Number(row.vote_summary_votes_count ?? 0),
+        lastVotedAt: row.vote_summary_last_voted_at
+          ? new Date(row.vote_summary_last_voted_at)
+          : undefined,
+      })),
+    };
+  }
+
+  private normalizeDateRange(filters?: VoteDateRangeInput) {
+    return {
+      startDate: this.parseDate(filters?.startDate, false),
+      endDate: this.parseDate(filters?.endDate, true),
+    };
+  }
+
+  private parseDate(value?: string, endOfDay = false): Date | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return undefined;
+    }
+
+    // If value is date-only like '2026-03-23', treat endDate as end of the day.
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (endOfDay && isDateOnly) {
+      date.setHours(23, 59, 59, 999);
+    }
+
+    return date;
+  }
+
+  private applyVoteDateFilter(
+    qb: SelectQueryBuilder<ObjectLiteral>,
+    alias: string,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    if (startDate) {
+      qb.andWhere(`${alias}.createdAt >= :startDate`, { startDate });
+    }
+    if (endDate) {
+      qb.andWhere(`${alias}.createdAt <= :endDate`, { endDate });
+    }
   }
 
   private async verifyGoogleToken(

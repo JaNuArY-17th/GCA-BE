@@ -6,9 +6,17 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
 import { SubmitVoteDto } from '@modules/votes/dto/submit-vote.dto';
 import { VotesService } from '@modules/votes/votes.service';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import {
+  VoteDateRangeQuery,
+  VoteStatsQuery,
+  VoterListQuery,
+} from '@modules/votes/dto/admin-query.dto';
 
 @Controller()
 export class VotesController {
@@ -73,8 +81,39 @@ export class VotesController {
   }
 
   @Get('votes/:voteId/results')
-  getResults(@Param('voteId') voteId: string) {
-    return this.votesService.getResults(voteId);
+  getResults(
+    @Param('voteId') voteId: string,
+    @Query() query: VoteDateRangeQuery,
+  ) {
+    return this.votesService.getResults(voteId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('admin/votes/stats')
+  getAdminStats(@Query() query: VoteStatsQuery) {
+    return this.votesService.getVoteStats(query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('admin/voters')
+  getVoters(@Query() query: VoterListQuery) {
+    const page = query.page ? Number(query.page) : 1;
+    const pageSize = query.pageSize ? Number(query.pageSize) : 20;
+    const hasVoted =
+      query.hasVoted === 'true'
+        ? true
+        : query.hasVoted === 'false'
+        ? false
+        : undefined;
+
+    return this.votesService.listVoters({
+      search: query.search?.trim(),
+      hasVoted,
+      page,
+      pageSize,
+      startDate: query.startDate,
+      endDate: query.endDate,
+    });
   }
 
   @Get('votes/history/:mssv')
