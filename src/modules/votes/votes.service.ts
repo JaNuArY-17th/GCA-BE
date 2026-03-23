@@ -259,6 +259,7 @@ export class VotesService {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transporter = nodemailerModule.createTransport({
       host: smtpHost,
       port: smtpPort,
@@ -267,7 +268,24 @@ export class VotesService {
         user: smtpUser,
         pass: smtpPass,
       },
-    });
+      // Hạn chế dùng IPv6 để tránh ENETUNREACH ở môi trường không hỗ trợ IPv6
+      tls: {
+        rejectUnauthorized: false,
+      },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+      localAddress: process.env.SMTP_LOCAL_ADDRESS || '0.0.0.0',
+      family: 4,
+    } as any);
+
+    try {
+      // Verify endpoint có sẵn trước khi gửi để giảm lỗi sau
+      await transporter.verify();
+    } catch (error) {
+      console.warn('VotesService: SMTP verify failed', error);
+      return;
+    }
 
     try {
       await transporter.sendMail({
@@ -278,7 +296,8 @@ export class VotesService {
       });
       console.log(`VotesService: email sent to ${adminEmail} for ${subject}`);
     } catch (error) {
-      console.error('VotesService: Error sending admin notification email', error);
+      console.warn('VotesService: Error sending admin notification email', error);
+      // Không throw để quá trình vote vẫn thành công dù email không gửi được
     }
   }
 
