@@ -30,12 +30,19 @@ export class VotesController {
     if (!body?.mssv || !body?.idToken) {
       throw new NotFoundException('Missing mssv or idToken');
     }
-    if (!body?.choices?.length) {
+
+    const choices = body.choices?.length
+      ? body.choices
+      : body.voteId && body.nomineeId
+      ? [{ voteId: body.voteId, nomineeId: body.nomineeId }]
+      : [];
+
+    if (!choices.length) {
       throw new NotFoundException('Missing vote choices');
     }
 
     await Promise.all(
-      body.choices.map((choice) =>
+      choices.map((choice) =>
         this.votesService.submitVote({
           voteId: choice.voteId,
           nomineeId: choice.nomineeId,

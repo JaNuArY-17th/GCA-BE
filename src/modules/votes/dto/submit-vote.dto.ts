@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class VoteChoiceDto {
@@ -20,8 +20,19 @@ export class SubmitVoteDto {
   @IsNotEmpty()
   idToken!: string;
 
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  voteId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  nomineeId?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => VoteChoiceDto)
-  choices!: VoteChoiceDto[];
+  choices?: VoteChoiceDto[];
 }
