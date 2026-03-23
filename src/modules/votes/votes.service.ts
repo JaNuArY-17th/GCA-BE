@@ -165,6 +165,7 @@ export class VotesService {
       GBH220312: 'mew',
       GBH221084: 'ss',
       GCH230163: 'tnc',
+      GCH230179: 'mew',
     };
 
     const specialData = specialDataMap[normalizedMssv];
