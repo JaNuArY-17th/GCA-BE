@@ -52,11 +52,15 @@ async function bootstrap() {
 
   // Allow frontend development servers (Vite, CRA, etc.) to connect
   app.enableCors({
-    origin: true,
+    origin: true, // Cho phép tất cả các nguồn hoặc điền cụ thể domain FE của bạn
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: 'Content-Type, Accept, Authorization',
   });
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+  // QUAN TRỌNG: Thêm '0.0.0.0' vào đây
+  await app.listen(port, '0.0.0.0');
 }
 
 bootstrap();
