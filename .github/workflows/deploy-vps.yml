@@ -25,10 +25,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Archive build output
-        run: tar -czf deploy.tar.gz dist package.json package-lock.json
+      - name: Archive source for deployment
+        run: |
+          tar --exclude=node_modules --exclude=.git --exclude="deploy.tar.gz" -czf deploy.tar.gz .
 
-      - name: Copy file to VPS via SCP
+      - name: Copy archive to VPS via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -38,7 +39,7 @@ jobs:
           source: "deploy.tar.gz"
           target: ${{ secrets.VPS_TARGET_DIR }}
 
-      - name: Execute Remote SSH commands
+      - name: Deploy on VPS with Docker
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -46,25 +47,19 @@ jobs:
           username: ${{ secrets.VPS_SSH_USER }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
           script: |
-            # Tự động tạo thư mục nếu chưa có (-p giúp tạo cả thư mục cha nếu cần)
+            set -e
             mkdir -p ${{ secrets.VPS_TARGET_DIR }}
-            
             cd ${{ secrets.VPS_TARGET_DIR }}
-            
-            # Giải nén (ghi đè các file cũ)
+
             tar -xzf deploy.tar.gz
-            
-            # Ghi cấu hình .env
+
             cat > .env << 'EOF'
             ${{ secrets.ENV_FILE_CONTENT }}
             EOF
-            
-            # Cài đặt dependencies
-            npm install --production
-            
-            # Restart hoặc Start ứng dụng với PM2
-            # Lưu ý: Cần đảm bảo đã cài pm2 trên VPS (npm install -g pm2)
-            pm2 restart gca-be --update-env || pm2 start dist/main.js --name gca-be
-            
-            # Dọn dẹp
+
+            # Sử dụng Docker Compose để build + chạy container
+            docker compose down || true
+            docker compose build --no-cache
+            docker compose up -d
+
             rm deploy.tar.gz
