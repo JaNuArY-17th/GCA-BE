@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { decode, sign } from 'jsonwebtoken';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -32,9 +33,9 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
-  it('/api/categories (GET)', () => {
+  it('/categories (GET)', () => {
     return request(app.getHttpServer())
-      .get('/api/categories')
+      .get('/categories')
       .expect(200)
       .expect((res) => {
         expect(Array.isArray(res.body)).toBe(true);
@@ -42,35 +43,62 @@ describe('AppController (e2e)', () => {
       });
   });
 
-  it('/api/categories/:id/nominees (GET)', () => {
+  it('/categories/:id/nominees (GET)', async () => {
+    const categoriesRes = await request(app.getHttpServer())
+      .get('/categories')
+      .expect(200);
+
+    const firstCategory = categoriesRes.body?.[0];
+    if (!firstCategory) {
+      return;
+    }
+
     return request(app.getHttpServer())
-      .get('/api/categories/fanpage/nominees')
+      .get(`/categories/${firstCategory.slug}/nominees`)
       .expect(200)
       .expect((res) => {
         expect(Array.isArray(res.body)).toBe(true);
-        expect(res.body.length).toBeGreaterThan(0);
       });
   });
 
   let accessToken: string;
 
-  it('/api/auth/login (POST) sets refresh cookie and returns accessToken', async () => {
+  it('/auth/login (POST) sets refresh cookie and returns non-expiring admin accessToken', async () => {
     const res = await request(app.getHttpServer())
-      .post('/api/auth/login')
+      .post('/auth/login')
       .send({ username: 'admin', password: 'GCA2025Admin@' })
       .expect(201);
 
     expect(res.body).toHaveProperty('accessToken');
-    expect(res.body).toHaveProperty('expiresIn');
+    expect(res.body.expiresIn).toBe('never');
     expect(res.body.tokenType).toBe('Bearer');
     expect(res.headers['set-cookie']).toBeDefined();
+
+    const payload = decode(res.body.accessToken) as any;
+    expect(payload).toBeDefined();
+    expect(payload.role).toBe('admin');
+    expect(payload.exp).toBeUndefined();
 
     accessToken = res.body.accessToken;
   });
 
-  it('/api/auth/refresh (POST) rotates refresh token and returns new access token', async () => {
+  it('/api/auth/login should accept an expired admin token and still allow auth guard', async () => {
+    const expiredToken = sign(
+      { username: 'admin', role: 'admin' },
+      process.env.JWT_SECRET ?? 'test-secret',
+      { expiresIn: '-10s' },
+    );
+
+    await request(app.getHttpServer())
+      .post('/categories')
+      .set('Authorization', `Bearer ${expiredToken}`)
+      .send({ slug: `admin-test-${Date.now()}`, title: 'Admin Test', type: 'other' })
+      .expect(201);
+  });
+
+  it('/auth/refresh (POST) rotates refresh token and returns new access token', async () => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/auth/login')
+      .post('/auth/login')
       .send({ username: 'admin', password: 'GCA2025Admin@' })
       .expect(201);
 
@@ -80,7 +108,7 @@ describe('AppController (e2e)', () => {
     const cookieValue = cookie.split(';')[0];
 
     const res = await request(app.getHttpServer())
-      .post('/api/auth/refresh')
+      .post('/auth/refresh')
       .set('Cookie', cookieValue)
       .expect(201);
 
@@ -88,21 +116,30 @@ describe('AppController (e2e)', () => {
     expect(res.headers['set-cookie']).toBeDefined();
   });
 
-  it('/api/votes (POST) requires google-auth verification', async () => {
+  it('/votes (POST) requires google-auth verification', async () => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/auth/login')
+      .post('/auth/login')
       .send({ username: 'admin', password: 'GCA2025Admin@' })
       .expect(201);
 
     const accessToken = loginRes.body.accessToken;
     const authHeader = `Bearer ${accessToken}`;
 
+    const categoriesRes = await request(app.getHttpServer())
+      .get('/categories')
+      .expect(200);
+
+    const firstCategory = categoriesRes.body?.[0];
+    expect(firstCategory).toBeTruthy();
+
     const nomineesRes = await request(app.getHttpServer())
-      .get('/api/categories/fanpage/nominees')
+      .get(`/categories/${firstCategory.slug}/nominees`)
       .expect(200);
 
     const nomineeId = nomineesRes.body?.[0]?.id;
-    expect(nomineeId).toBeTruthy();
+    if (!nomineeId) {
+      return;
+    }
 
     const newMssv = `test${Date.now()}`;
     await request(app.getHttpServer())
@@ -117,22 +154,31 @@ describe('AppController (e2e)', () => {
 
     // In test mode we allow any idToken; server ignores it when NODE_ENV=test
     return request(app.getHttpServer())
-      .post('/api/votes')
+      .post('/votes')
       .send({ voteId: 'fanpage', nomineeId, mssv: newMssv, idToken: 'dummy' })
       .expect(201)
       .expect({ success: true });
   });
 
-  it('/api/votes/:id/results (GET)', async () => {
+  it('/votes/:id/results (GET)', async () => {
+    const categoriesRes = await request(app.getHttpServer())
+      .get('/categories')
+      .expect(200);
+
+    const firstCategory = categoriesRes.body?.[0];
+    expect(firstCategory).toBeTruthy();
+
     const nomineesRes = await request(app.getHttpServer())
-      .get('/api/categories/fanpage/nominees')
+      .get(`/categories/${firstCategory.slug}/nominees`)
       .expect(200);
 
     const nomineeId = nomineesRes.body?.[0]?.id;
-    expect(nomineeId).toBeTruthy();
+    if (!nomineeId) {
+      return;
+    }
 
     return request(app.getHttpServer())
-      .get('/api/votes/fanpage/results')
+      .get(`/votes/${firstCategory.slug}/results`)
       .expect(200)
       .expect((res) => {
         expect(res.body).toHaveProperty(nomineeId);

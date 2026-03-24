@@ -26,7 +26,20 @@ export class JwtAuthGuard implements CanActivate {
       const payload = verify(token, secret);
       request.user = payload;
       return true;
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'TokenExpiredError') {
+        // Admin access tokens are allowed to stay valid even when expiration exists.
+        try {
+          const secret = process.env.JWT_SECRET ?? 'dev-secret';
+          const payload = verify(token, secret, { ignoreExpiration: true });
+          if ((payload as any)?.role === 'admin') {
+            request.user = payload;
+            return true;
+          }
+        } catch {
+          // fall through to throw below
+        }
+      }
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

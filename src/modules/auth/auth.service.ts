@@ -14,8 +14,8 @@ export class AuthService {
   private readonly adminUsername = process.env.ADMIN_USERNAME;
   private readonly adminPassword = process.env.ADMIN_PASSWORD;
   private readonly jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev-secret';
-  private readonly jwtExpiresIn: StringValue | number =
-    (process.env.JWT_EXPIRES_IN as StringValue) ?? ('1h' as StringValue);
+  // Admin access token should not expire
+  private readonly jwtExpiresIn: StringValue | number = 'never';
   private readonly refreshTokenExpiresIn: StringValue | number =
     (process.env.REFRESH_TOKEN_EXPIRES_IN as StringValue) ??
     ('7d' as StringValue);
@@ -79,9 +79,8 @@ export class AuthService {
       username,
       role: 'admin',
     };
-    return sign(payload, this.jwtSecret, {
-      expiresIn: this.jwtExpiresIn,
-    });
+    // Do not set expiresIn for admin access token so it doesn't expire
+    return sign(payload, this.jwtSecret);
   }
 
   private generateRefreshToken(username: string) {

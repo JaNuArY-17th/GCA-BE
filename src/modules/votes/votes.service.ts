@@ -386,9 +386,11 @@ export class VotesService {
     const raw = await qb.getRawOne<{ totalVoteRecords: string }>();
     const totalVoteRecords = Number(raw?.totalVoteRecords ?? 0);
 
+    const totalVoters = await this.voterRepo.count({ where: { hasVoted: true } });
+
     return {
       totalVoteRecords,
-      totalVoters: Math.floor(totalVoteRecords / 5),
+      totalVoters,
       dateRange: {
         startDate: startDate?.toISOString(),
         endDate: endDate?.toISOString(),
