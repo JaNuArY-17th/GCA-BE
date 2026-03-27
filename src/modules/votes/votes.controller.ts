@@ -105,6 +105,8 @@ export class VotesController {
     });
   }
 
+
+  
   @Get('votes/history/:mssv')
   getHistory(@Param('mssv') mssv: string) {
     return this.votesService.getVoteHistory(mssv);

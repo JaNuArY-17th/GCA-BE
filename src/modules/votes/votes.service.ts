@@ -285,37 +285,32 @@ export class VotesService {
 
     const history = await this.voteRepo
       .createQueryBuilder('vote')
-      .select([
-        'vote.id AS vote_id',
-        'vote.voteId AS vote_voteId',
-        'vote.nomineeId AS vote_nomineeId',
-        'vote.createdAt AS vote_createdAt',
-      ])
-      .addSelect([
-        'nominee.id AS nominee_id',
-        'nominee.name AS nominee_name',
-        'nominee.description AS nominee_description',
-      ])
-      .addSelect([
-        'category.id AS category_id',
-        'category.slug AS category_slug',
-        'category.title AS category_title',
-      ])
-      .leftJoin(Nominee, 'nominee', 'nominee.id = vote.nomineeId')
-      .leftJoin(Category, 'category', 'category.id = nominee.categoryId')
+      .select('vote.id', 'vote_id')
+      .addSelect('vote.voteId', 'vote_voteId')
+      .addSelect('vote.createdAt', 'vote_createdAt')
+      .addSelect('n.id', 'nominee_id')
+      .addSelect('n.name', 'nominee_name')
+      .addSelect('n.description', 'nominee_description')
+      .addSelect('c.id', 'category_id')
+      .addSelect('c.slug', 'category_slug')
+      .addSelect('c.title', 'category_title')
+      .leftJoin('nominees', 'n', 'n.id::text = vote.nomineeId')
+      .leftJoin('categories', 'c', 'c.id::text = vote.voteId')
       .where('vote.mssv = :mssv', { mssv: normalizedMssv })
       .orderBy('vote.createdAt', 'DESC')
       .getRawMany<any>();
 
-    const nomineeIds = Array.from(new Set(history.map((r) => r.nominee_id)));
-    const medias = await this.mediaRepo.find({
-      where: { nomineeId: In(nomineeIds) },
-      order: { createdAt: 'ASC' },
-    });
+    const nomineeIds = Array.from(new Set(history.map((r) => r.nominee_id).filter(Boolean)));
+
+    const medias = nomineeIds.length
+      ? await this.mediaRepo.find({
+        where: { nomineeId: In(nomineeIds) },
+        order: { createdAt: 'ASC' },
+      })
+      : [];
+
     const mediaMap = medias.reduce((acc, media) => {
-      if (!acc[media.nomineeId]) {
-        acc[media.nomineeId] = media;
-      }
+      if (!acc[media.nomineeId]) acc[media.nomineeId] = media;
       return acc;
     }, {} as Record<string, Media>);
 
@@ -327,7 +322,7 @@ export class VotesService {
         id: row.nominee_id,
         name: row.nominee_name,
         description: row.nominee_description,
-        imageUrl: mediaMap[row.nominee_id]?.url,
+        imageUrl: mediaMap[row.nominee_id]?.url ?? null,
       },
       category: {
         id: row.category_id,
